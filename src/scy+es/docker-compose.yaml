@@ -64,6 +64,7 @@ services:
                 hard: -1
         volumes:
             - ./data/esdata1:/usr/share/elasticsearch/data
+            - ./data/plugins/ik:/usr/share/elasticsearch/plugins/ik
         ports:
             - '9200:9200'
         networks:
@@ -94,6 +95,7 @@ services:
                 hard: -1
         volumes:
             - ./data/esdata2:/usr/share/elasticsearch/data
+            - ./data/plugins/ik:/usr/share/elasticsearch/plugins/ik
         ports:
             - '9201:9200'
         networks:

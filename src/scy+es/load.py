@@ -10,7 +10,10 @@ from cassandra.cluster import Cluster,ExecutionProfile,EXEC_PROFILE_DEFAULT
 from cassandra.policies import DCAwareRoundRobinPolicy
 from cassandra import ConsistencyLevel
 from elasticsearch import Elasticsearch
-from utils import ThreadPoolExecutorWithQueueSizeLimit
+
+import sys
+sys.path.append('../')
+from utils import ThreadPoolExecutorWithQueueSizeLimit,getLogger
 
 ## Script args and Help
 parser = argparse.ArgumentParser(add_help=True)
@@ -49,36 +52,38 @@ class Loader:
     start = 0
     def __init__(self,filename):
         logging.getLogger("elasticsearch").setLevel(logging.WARNING)
-        self.log = getLogger('scy+es','load.log')
+        self.log = getLogger('scy+es','es.log')
         
         Loader.start = datetime.now()
 
-        self.__init_scy()
+        self.filename = filename
+
+#        self.__init_scy()
         self.__init_es()
         
-        self.pool_scy = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
+#        self.pool_scy = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
         self.pool_es = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
 
-    def load_data(filename):
+    def load(self):
 
         # main loop
-        g = self.__line_generator(filename)
+        g = self.__line_generator()
         while True:
             try:
                 line = json.loads(next(g))
-                self.pool_scy.submit(self.__insert_data,line)
+#                self.pool_scy.submit(self.__insert_data,line)
                 self.pool_es.submit(self.__insert_index,line)
             except StopIteration:
                 break
             except Exception:
                 continue 
 
-        self.pool_scy.shutdown()
+#        self.pool_scy.shutdown()
         self.pool_es.shutdown()
 
         self.es.indices.refresh(index='reddit')
         # shutdown
-        self.session.shutdown()
+#        self.session.shutdown()
 
         # print information
         self.log.info('## Total cost time: {}'.format(datetime.now() - Loader.start))
@@ -86,16 +91,16 @@ class Loader:
 
 
 
-    def __line_generator(self,filename):
+    def __line_generator(self):
 
-        with open(filename, 'r', encoding='utf-8') as f:
+        with open(self.filename, 'r', encoding='utf-8') as f:
             for counter,line in enumerate(f):
                 try:
                     if counter%100000 == 0:
-                        log.info(str(counter))
+                        self.log.info(str(counter))
                         if counter%1000000 == 0:
-                            log.info('{}'.format(datetime.now()-Loader.start))
-                            log.info('')
+                            self.log.info('{}'.format(datetime.now()-Loader.start))
+                            self.log.info('')
                     yield line
                 except Exception as e:
                     print(e)
@@ -103,7 +108,7 @@ class Loader:
 
 
     # get scylladb connect, create ks and tb, return session
-    def __init_scylladb(self):
+    def __init_scy(self):
         # session = Cluster(contact_points=SCYLLA_IP,execution_profiles={EXEC_PROFILE_DEFAULT:ep}).connect()
         self.session = Cluster(contact_points=SCYLLA_IP).connect()
         # create a schema
@@ -119,11 +124,10 @@ class Loader:
     # get es connect, create index
     def __init_es(self):
 
-        slef.es = Elasticsearch(ES_IP)
+        self.es = Elasticsearch(ES_IP, timeout=30)
         # create es index
         self.es.indices.create(index="reddit", ignore=400)
 
-        return es
 
 
     # insert data into scylladb
@@ -152,5 +156,5 @@ class Loader:
 
 
 if __name__ == '__main__':
-    loader = Loader('/home/zyh/graduation-project/data/reddit_comment')
+    loader = Loader('/home/zyh/graduation-project/data/reddit_test')
     loader.load()
