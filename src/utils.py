@@ -5,12 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 mapper = {
             'reddit':{
-                    'load':'../data/reddit_comment',
-                    'search':'../data/reddit_word'
+                    'load':'../../data/reddit_comment',
+                    'search':'../../data/reddit_word'
                     },
             'amazon':{
-                    'load':'../data/amazon_rate',
-                    'search':'../data/amazon_world'
+                    'load':'../../data/amazon_comment',
+                    'search':'../../data/amazon_word'
                     }
         }
 
