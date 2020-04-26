@@ -3,6 +3,7 @@
 #
 
 ## Using elasticsearch-py ###
+
 import argparse
 import concurrent.futures
 from datetime import datetime
@@ -13,7 +14,7 @@ from elasticsearch import Elasticsearch
 
 import sys
 sys.path.append('../')
-from utils import ThreadPoolExecutorWithQueueSizeLimit, getLogger
+from utils import ThreadPoolExecutorWithQueueSizeLimit, getLogger, mapper
 
 
 ## Script args and help
@@ -29,13 +30,13 @@ DSE_IP = opts.DSE_IP.split(',')
 
 class Searcher:
     start = 0
-    def __init__(self,filename):
+    def __init__(self,name):
 
-        self.filename = filename 
+        self.filename = mapper[name][search]
         Searcher.start = datetime.now()
 
-        self.log1 = getLogger('time', 'query_time.log')
-        self.log2 = getLogger('result', 'query_result.log')
+        self.log1 = getLogger('time', 'search_time.log')
+        self.log2 = getLogger('result', 'search_result.log')
 
         self.log2.info('## connecting to cassandra cluster')
         self.session = Cluster(DSE_IP).connect()
@@ -46,7 +47,7 @@ class Searcher:
         self.cql_prepared.consistency_level = ConsistencyLevel.ONE
         
      
-    def query(self):
+    def search(self):
         counter = 0
 
         with open(self.filename, 'r', encoding='utf-8') as f:
@@ -73,6 +74,5 @@ class Searcher:
         self.log1.info('total time:{}'.format(datetime.now() - Searcher.start))
 
 if __name__ == '__main__':
-    searcher = Searcher('/home/zyh/graduation-project/data/word')
-    searcher.query()
-
+    searcher = Searcher(name)
+    searcher.search()

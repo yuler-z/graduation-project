@@ -3,6 +3,7 @@
 #
 
 ## Using elasticsearch-py ###
+
 import argparse
 import concurrent.futures
 from datetime import datetime
@@ -13,7 +14,7 @@ from elasticsearch import Elasticsearch
 
 import sys
 sys.path.append('../')
-from utils import ThreadPoolExecutorWithQueueSizeLimit, getLogger
+from utils import ThreadPoolExecutorWithQueueSizeLimit, getLogger,mapper
 
 
 ## Script args and help
@@ -31,12 +32,13 @@ ES_IP = opts.ES_IP.split(',')
 
 
 class Searcher:
-    def __init__(self,filename):
+    def __init__(self,name):
 
-        self.filename = filename 
+        self.index = name
+        self.filename = mapper[name][query]
 
-        self.log1 = getLogger('time', 'query_time.log')
-        self.log2 = getLogger('result', 'query_result.log')
+        self.log1 = getLogger('time', 'search_time.log')
+        self.log2 = getLogger('result', 'search_result.log')
 
         self.log2.info('## connecting to elasticsearch cluster')
         self.es = Elasticsearch(ES_IP)
@@ -52,8 +54,13 @@ class Searcher:
 #                        }
 #                    }
 #                    '''
-        self.query_body = {"query":{"match":{"body":""}}}
-        cql = "SELECT * FROM reddit.comment WHERE id=?"
+        if self.index == 'reddit':
+            self.query_body = {"query":{"match":{"body":""}}}
+            cql = "SELECT * FROM reddit.comment WHERE id=?"
+        elif self.index == 'amazon':
+            self.query_body = {"query":{"match":{"body":""}}}
+            cql = "SELECT * FROM amazon.comment WHERE id=?"
+            
         self.cql_prepared = self.session.prepare(cql)
         self.cql_prepared.consistency_level = ConsistencyLevel.LOCAL_QUORUM
         
@@ -75,7 +82,8 @@ class Searcher:
                     
                     # format query body
                     self.query_body['query']['match']['body'] = line
-                    res = self.es.search(index="reddit", doc_type="comment", body=self.query_body, size=3)
+                        
+                    res = self.es.search(index=self.index, doc_type="comment", body=self.query_body, size=3)
                     
                     es_results = [doc['_id'] for doc in res['hits']['hits']]
 
@@ -96,6 +104,6 @@ class Searcher:
         ## Print all columns in Elasticsearch result set
         #print("id: %s | name: %s | author: %s | body: %s" % (doc['_id'], doc['_source']['name'],doc['_source']['author'], doc['_source']['body']))
 if __name__ == '__main__':
-    searcher = Searcher('/home/zyh/graduation-project/data/word')
+    searcher = Searcher('reddit')
     searcher.query()
 

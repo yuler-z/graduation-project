@@ -10,7 +10,7 @@ from cassandra.cluster import Cluster,ExecutionProfile,EXEC_PROFILE_DEFAULT
 from cassandra.policies import DCAwareRoundRobinPolicy
 from cassandra import ConsistencyLevel
 from elasticsearch import Elasticsearch
-from utils import ThreadPoolExecutorWithQueueSizeLimit
+from utils import ThreadPoolExecutorWithQueueSizeLimit,mapper
 
 ## Script args and Help
 parser = argparse.ArgumentParser(add_help=True)
@@ -21,37 +21,69 @@ opts = parser.parse_args()
 SCYLLA_IP = opts.SCYLLA_IP.split(',')
 ES_IP = opts.ES_IP.split(',')
 
-# statement
-create_ks = ("CREATE KEYSPACE IF NOT EXISTS reddit"
-            " WITH replication = {"
-                "'class' : 'NetworkTopologyStrategy',"
-                " 'datacenter1' : 2"
-            "}"
-            )
-create_tb = ("CREATE TABLE IF NOT EXISTS reddit.comment "
-                " (id text,"
-                " name text,"
-                " link_id text,"
-                " parent_id text,"
-                " subreddit_id text,"
-                " author text,"
-                " body text,"
-                " PRIMARY KEY(id, name))"
-            )
-cql = ("INSERT INTO reddit.comment "
-        "(id, name, link_id, parent_id, subreddit_id, author, body)"
-        " VALUES(?,?,?,?,?,?,?)"
-        " USING TIMESTAMP ?"
-        )
+class Statement:
+    def __init__(self,name):
+        switcher = { 'reddit': self.reddit_stat, 'amazon': self.amazon_stat}
+        self.create_ks, self.create_tb, self.cql = switcher[name]
 
+    def reddit_stat(self):
+        create_ks = ("CREATE KEYSPACE IF NOT EXISTS reddit"
+                    " WITH replication = {"
+                        "'class' : 'NetworkTopologyStrategy',"
+                        " 'datacenter1' : 2"
+                    "}"
+                )
+        create_tb = ("CREATE TABLE IF NOT EXISTS reddit.comment "
+                        " (id text,"
+                        " name text,"
+                        " link_id text,"
+                        " parent_id text,"
+                        " subreddit_id text,"
+                        " author text,"
+                        " body text,"
+                        " PRIMARY KEY(id, name))"
+                    )
+        cql = ("INSERT INTO reddit.comment "
+                "(id, name, link_id, parent_id, subreddit_id, author, body)"
+                " VALUES(?,?,?,?,?,?,?)"
+                " USING TIMESTAMP ?"
+                )
+    def amazon_stat(self):
+         create_ks = ("CREATE KEYSPACE IF NOT EXISTS amazon"
+                    " WITH replication = {"
+                        "'class' : 'NetworkTopologyStrategy',"
+                        " 'datacenter1' : 2"
+                    "}"
+                )
+        create_tb = ("CREATE TABLE IF NOT EXISTS amazon.comment "
+                        " (id int,"
+                        " user_id int,"
+                        " product_id text,"
+                        " rating float,"
+                        " title text,"
+                        " body text,"
+                        " PRIMARY KEY(id, name))"
+                    )
+        cql = ("INSERT INTO reddit.comment "
+                "(id, user_id, product_id, rating_id, title, body)"
+                " VALUES(?,?,?,?,?,?,?)"
+                " USING TIMESTAMP ?"
+                )
+            
 
 class Loader:
     start = 0
-    def __init__(self,filename):
+    def __init__(self,name):
         logging.getLogger("elasticsearch").setLevel(logging.WARNING)
         self.log = getLogger('scy+es','load.log')
         
         Loader.start = datetime.now()
+
+    
+        self.index = name
+        self.stat = Statement(name)
+
+        self.filename = mapper[name]
 
         self.__init_scy()
         self.__init_es()
@@ -59,24 +91,37 @@ class Loader:
         self.pool_scy = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
         self.pool_es = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
 
-    def load_data(filename):
+    def load(self):
 
-        # main loop
-        g = self.__line_generator(filename)
-        while True:
+        if self.index == 'reddit':
+            # main loop
+            g = self.__line_generator(filename)
+            while True:
+                try:
+                    line = json.loads(next(g))
+                    self.pool_scy.submit(self.__insert_data,line)
+                    self.pool_es.submit(self.__insert_index,line)
+                except StopIteration:
+                    break
+                except Exception:
+                    continue 
+        elif self.index == 'amazon':
+            df = pd.read_csv(self.filename)
+            
+            end = df.index.max()
             try:
-                line = json.loads(next(g))
-                self.pool_scy.submit(self.__insert_data,line)
-                self.pool_es.submit(self.__insert_index,line)
-            except StopIteration:
-                break
-            except Exception:
-                continue 
-
+                for line in zip(range(0,end+1),df['userId'],df['productId'],
+                                    df['rating'],df['title'],df['comment'],df['timestamp']):
+                    self.pool_scy.submit(self.__insert_data,line)
+                    self.pool_es.submit(self.__insert_index,line)
+            except Exception as e:
+                print(e)
+                continue
+            
         self.pool_scy.shutdown()
         self.pool_es.shutdown()
-
-        self.es.indices.refresh(index='reddit')
+        
+        self.es.indices.refresh(index=self.index)
         # shutdown
         self.session.shutdown()
 
@@ -85,10 +130,9 @@ class Loader:
         self.log.info('## Inserts completed')
 
 
+    def __line_generator(self):
 
-    def __line_generator(self,filename):
-
-        with open(filename, 'r', encoding='utf-8') as f:
+        with open(self.filename, 'r', encoding='utf-8') as f:
             for counter,line in enumerate(f):
                 try:
                     if counter%100000 == 0:
@@ -107,34 +151,33 @@ class Loader:
         # session = Cluster(contact_points=SCYLLA_IP,execution_profiles={EXEC_PROFILE_DEFAULT:ep}).connect()
         self.session = Cluster(contact_points=SCYLLA_IP).connect()
         # create a schema
-        self.session.execute(create_ks)
+        self.session.execute(self.stat.create_ks)
         # create a tb
-        self.session.execute(create_tb)
+        self.session.execute(self.stat.create_tb)
 
-        self.cql_prepared = self.session.prepare(cql)
+        self.cql_prepared = self.session.prepare(selg.stat.cql)
         self.cql_prepared.consistency_level = ConsistencyLevel.LOCAL_QUORUM
 
 
 
     # get es connect, create index
     def __init_es(self):
-
+        #  
         slef.es = Elasticsearch(ES_IP)
         # create es index
-        self.es.indices.create(index="reddit", ignore=400)
+        self.es.indices.create(index=self.index, ignore=400,timeout=30)
 
-        return es
 
 
     # insert data into scylladb
     def __insert_data(self,line):
 
         # TODO: format your data
-        data = [line['id'], line['name'], line['link_id'], line['parent_id'],
-        line['subreddit_id'],line['author'], line['body'], int(line['created_utc'])]
-
-        # prepare
-        # cql_prepared.consistency_level = ConsistencyLevel.LOCAL_ONE if random.random() < 0.2 else ConsistencyLevel.LOCAL_QUORUM
+        if self.index == 'reddit':
+            data = [line['id'], line['name'], line['link_id'], line['parent_id'],
+                    line['subreddit_id'],line['author'], line['body'], int(line['created_utc'])]
+        elif self.index == 'amazon':
+            pass
         
         res = self.session.execute(self.cql_prepared,data,timeout=60000)
         return 
@@ -145,12 +188,19 @@ class Loader:
     def __insert_index(self,line): 
 
         # TODO: format your data
-        data = { k:v for k,v in line.items() if k in ['id', 'name', 'author', 'body'] }
-        res = self.es.index(index="reddit", doc_type="comment", id=line['id'], body=data)
+        if self.index == 'reddit':
+            data = { k:v for k,v in line.items() if k in ['id', 'name', 'author', 'body'] }
+        elif self.index == 'amazon':
+            data = {}
+            data['id'] = line[0]
+            data['title'] = line[4]
+            data['body'] = line[5]
+
+        res = self.es.index(index=self.index, doc_type="comment", id=line[id], body=data)
         return 
 
 
 
 if __name__ == '__main__':
-    loader = Loader('/home/zyh/graduation-project/data/reddit_comment')
+    loader = Loader(reddit)
     loader.load()
