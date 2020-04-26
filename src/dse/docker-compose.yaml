@@ -1,0 +1,83 @@
+version: '2'
+
+networks:
+    net:
+        driver: bridge
+        ipam:   
+            config:
+                - subnet: 10.10.9.0/24
+
+services:
+    dse-node1:
+        image: "datastax/dse-server:6.8.0"
+        command: [ "-s" ]
+        container_name: dse-node1
+        environment:
+            - CLUSTER_NAME=DSECluster
+            - DS_LICENSE=accept
+            - DC=datacenter1
+            - RACK=rack1
+            - HEAP_NEWSIZE=1g
+            - MAX_HEAP_SIZE=4g
+        volumes:
+            - ./data/node1/data:/var/lib/cassandra
+            - ./data/node1/log:/var/log/cassandra
+        ports:
+            - '9842:9042'
+        cap_add:
+            - IPC_LOCK
+        ulimits:
+            memlock: -1
+        networks:
+            net:
+                ipv4_address: 10.10.9.2
+            
+    dse-node2:
+        image: "datastax/dse-server:6.8.0"
+        command: [ "-s" ]
+        container_name: dse-node2
+        environment: 
+            - CLUSTER_NAME=DSECluster
+            - DS_LICENSE=accept
+            - DC=datacenter1
+            - RACK=rack2
+            - SEEDS=dse-node1
+            - HEAP_NEWSIZE=1g
+            - MAX_HEAP_SIZE=4g
+        volumes:
+            - ./data/node2/data:/var/lib/cassandra
+            - ./data/node2/log:/var/log/cassandra
+        cap_add:
+            - IPC_LOCK
+        ulimits:
+            memlock: -1
+        links:
+            - dse-node1
+        networks:
+            net:
+                ipv4_address: 10.10.9.3
+        
+    dse-node3:
+        image: "datastax/dse-server:6.8.0"
+        command: [ "-s" ]
+        container_name: dse-node3
+        environment: 
+            - CLUSTER_NAME=DSECluster
+            - DS_LICENSE=accept
+            - DC=datacenter1
+            - RACK=rack3
+            - SEEDS=dse-node1
+            - HEAP_NEWSIZE=1g
+            - MAX_HEAP_SIZE=4g
+        volumes:
+            - ./data/node3/data:/var/lib/cassandra
+            - ./data/node3/log:/var/log/cassandra
+        cap_add:
+            - IPC_LOCK
+        ulimits:
+            memlock: -1
+        links:
+            - dse-node1
+        networks:
+            net:
+                ipv4_address: 10.10.9.4

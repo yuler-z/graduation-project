@@ -1,0 +1,132 @@
+version: "2"
+ 
+services:
+
+    scylla-node1:
+        image: scylladb/scylla
+        restart: always
+        container_name: scylla-node1
+        #environment:
+        #    - DC1=DC1
+        volumes:
+            - ./data/scydata1:/var/lib/scylla
+        ports:
+            - '9942:9042'
+        networks:
+            net:
+                ipv4_address: 10.10.10.2
+
+    scylla-node2:
+        image: scylladb/scylla
+        restart: always
+        container_name: scylla-node2
+        volumes:
+            - ./data/scydata2:/var/lib/scylla
+        command: --seeds=10.10.10.2
+        #environment:
+        #    - DC1=DC1
+        networks:
+            net:
+                ipv4_address: 10.10.10.3
+        
+            
+    scylla-node3:
+        image: scylladb/scylla
+        restart: always
+        container_name: scylla-node3
+        volumes:
+            - ./data/scydata3:/var/lib/scylla
+        command: --seeds=10.10.10.2
+        #environment:
+        #    - DC1=DC1
+        networks:
+            net:
+                ipv4_address: 10.10.10.4
+        
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.6.2 
+        container_name: 'elasticsearch'
+        restart: always
+        environment:
+            - cluster.name=es-cluster
+            - cluster.initial_master_nodes=node1
+            - node.name=node1
+            - node.master=true
+            - node.data=true
+            - bootstrap.memory_lock=true
+            - http.cors.enabled=true
+            - http.cors.allow-origin=*
+#            - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+            - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
+        ulimits:
+            memlock:
+                soft: -1
+                hard: -1
+        volumes:
+            - ./data/esdata1:/usr/share/elasticsearch/data
+        ports:
+            - '9200:9200'
+        networks:
+            net: 
+                ipv4_address: 10.10.10.5
+                
+                
+     
+    elasticsearch2:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.6.2 
+        container_name: 'elasticsearch2'
+        restart: always
+        environment:
+            - cluster.name=es-cluster
+            - cluster.initial_master_nodes=node1
+            - node.name=node2
+            - node.master=false
+            - node.data=true
+            - bootstrap.memory_lock=true
+            - http.cors.enabled=true
+            - http.cors.allow-origin=*
+#            - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+            - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
+            - "discovery.zen.ping.unicast.hosts=elasticsearch"
+        ulimits:
+            memlock:
+                soft: -1
+                hard: -1
+        volumes:
+            - ./data/esdata2:/usr/share/elasticsearch/data
+        ports:
+            - '9201:9200'
+        networks:
+            net:
+                ipv4_address: 10.10.10.6
+        depends_on:
+            - elasticsearch
+     
+#    kibana:
+#        image: kibana:7.6.2
+#        container_name: kibana
+#        environment:
+#            - SERVER_NAME=kibana
+#            - ELASTICSEARCH_URL=http://10.10.10.4:9200
+#            - XPACK_MONITORING_ENABLED=true
+#        ports:
+#            - 5601:5601
+#        networks:
+#            net:
+#                ipv4_address: 10.10.10.7
+#        depends_on:
+#            - elasticsearch
+#        external_links:
+#            - elasticsearch
+#volumes:
+#    esdata1:
+#        driver: local
+#    esdata2:
+#        driver: local
+ 
+networks:
+    net:
+        driver: bridge
+        ipam: 
+            config:
+                - subnet: 10.10.10.0/24
