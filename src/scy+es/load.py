@@ -10,7 +10,10 @@ from cassandra.cluster import Cluster,ExecutionProfile,EXEC_PROFILE_DEFAULT
 from cassandra.policies import DCAwareRoundRobinPolicy
 from cassandra import ConsistencyLevel
 from elasticsearch import Elasticsearch
-from utils import ThreadPoolExecutorWithQueueSizeLimit,mapper
+
+import sys
+sys.path.append('../')
+from utils import ThreadPoolExecutorWithQueueSizeLimit,getLogger
 
 ## Script args and Help
 parser = argparse.ArgumentParser(add_help=True)
@@ -75,7 +78,7 @@ class Loader:
     start = 0
     def __init__(self,name):
         logging.getLogger("elasticsearch").setLevel(logging.WARNING)
-        self.log = getLogger('scy+es','load.log')
+        self.log = getLogger('scy+es','es.log')
         
         Loader.start = datetime.now()
 
@@ -83,12 +86,12 @@ class Loader:
         self.index = name
         self.stat = Statement(name)
 
-        self.filename = mapper[name]
+        self.filename = mapper[name][load]
 
         self.__init_scy()
         self.__init_es()
         
-        self.pool_scy = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
+#        self.pool_scy = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
         self.pool_es = ThreadPoolExecutorWithQueueSizeLimit(max_workers=10)
 
     def load(self):
@@ -123,7 +126,7 @@ class Loader:
         
         self.es.indices.refresh(index=self.index)
         # shutdown
-        self.session.shutdown()
+#        self.session.shutdown()
 
         # print information
         self.log.info('## Total cost time: {}'.format(datetime.now() - Loader.start))
@@ -136,10 +139,10 @@ class Loader:
             for counter,line in enumerate(f):
                 try:
                     if counter%100000 == 0:
-                        log.info(str(counter))
+                        self.log.info(str(counter))
                         if counter%1000000 == 0:
-                            log.info('{}'.format(datetime.now()-Loader.start))
-                            log.info('')
+                            self.log.info('{}'.format(datetime.now()-Loader.start))
+                            self.log.info('')
                     yield line
                 except Exception as e:
                     print(e)
@@ -147,7 +150,7 @@ class Loader:
 
 
     # get scylladb connect, create ks and tb, return session
-    def __init_scylladb(self):
+    def __init_scy(self):
         # session = Cluster(contact_points=SCYLLA_IP,execution_profiles={EXEC_PROFILE_DEFAULT:ep}).connect()
         self.session = Cluster(contact_points=SCYLLA_IP).connect()
         # create a schema
@@ -162,8 +165,8 @@ class Loader:
 
     # get es connect, create index
     def __init_es(self):
-        #  
-        slef.es = Elasticsearch(ES_IP)
+
+        self.es = Elasticsearch(ES_IP, timeout=30)
         # create es index
         self.es.indices.create(index=self.index, ignore=400,timeout=30)
 
