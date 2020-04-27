@@ -172,9 +172,12 @@ class Loader:
     # get es connect, create index
     def __init_es(self):
 
+        with open('mapping.json','r') as f:
+           mapping = json.load(f)[self.index] 
+
         self.es = Elasticsearch(ES_IP, timeout=30)
         # create es index
-        self.es.indices.create(index=self.index, ignore=400,timeout=30)
+        self.es.indices.create(index=self.index,body=mapping ignore=400,timeout=30)
 
 
 

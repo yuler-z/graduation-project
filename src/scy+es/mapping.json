@@ -1,0 +1,71 @@
+{
+    "reddit":{
+        "mappings":{
+            "properties":{
+                "id":{
+                    "type": "text"
+                },
+                "name": {
+                    "type": "text",
+                    "fields":{
+                        "keyword":{
+                            "type": "keyword",
+                            "ignore_above": 256
+                        }
+                    }
+                },
+                "author": {
+                    "type": "text",
+                    "fields":{
+                        "keyword":{
+                            "type": "keyword",
+                            "ignore_above": 256
+                        }
+                    }
+                },
+                "body": {
+                    "type": "text",
+                    "fields":{
+                        "keyword":{
+                            "type": "keyword",
+                            "ignore_above": 256
+                        }
+                    }
+                }
+
+            }
+        }
+    },
+    "amazon":{
+        "mappings":{
+            "properties":{
+                "id":{
+                    "type": "long"
+                },
+                "title": {
+                    "type": "text",
+                    "analyzer": "ik_max_word",
+                    "search_analyzer": "ik_smart",
+                    "fields":{
+                        "keyword":{
+                            "type": "keyword",
+                            "ignore_above": 256
+                        }
+                    }
+                },
+                "body": {
+                    "type": "text",
+                    "analyzer": "ik_max_word",
+                    "search_analyzer": "ik_smart",
+                    "fields":{
+                        "keyword":{
+                            "type": "keyword",
+                            "ignore_above": 256
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
